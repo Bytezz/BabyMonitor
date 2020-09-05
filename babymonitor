@@ -1,0 +1,185 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#######################
+#     BabyMonitor     #
+#######################
+import time,os,sys
+version=1.0
+def clear():
+	#print('\033c')
+	os.system("clear")
+def epoch():
+	return int((os.popen("date +%s").read()).replace("\n",""))
+def elaborate(e):
+	if e.isdigit():
+		o=int(e)
+	elif e.startswith("-") and e[1:].isdigit():
+		o=int(e)
+	elif "." in e and e.split(".")[-1].isdigit():
+		if e.split(".")[0].isdigit() or e.split(".")[0]=="":
+			o=float(e)
+		elif e.split(".")[0].startswith("-") and e.split(".")[0][1:].isdigit():
+			o=float(e)
+		else:
+			o=e
+	else:
+		o=e
+	return o
+def read(path,search=[]):
+	if search!=[] and search!="":
+		s=True
+	else:
+		s=False
+	if path.startswith("exec "):
+		c=os.popen(path[5:]).read()
+	else:
+		with open(path) as file:
+			c=file.read()
+			file.close()
+	o=[]
+	for r in c.split("\n"):
+		if s:
+			i=0;pr=True
+			while i<len(search) and pr:
+				if search[i].lower() in r.lower():
+					g=True
+					pr=False
+				else:
+					g=False
+				i+=1
+		else:
+			g=True
+		if g:
+			for e in r.split(" "):
+				e=e.replace("\n","").replace("\t","")
+				if e!="":
+					o.append(elaborate(e))
+	return o
+def wait(t=3):
+	time.sleep(t)
+############
+running=True
+loop=False # if its loop
+ttwait=3 # time to wait
+if len(sys.argv)>1:
+	if "-h" in sys.argv or "--help" in sys.argv:
+		print(sys.argv[0]+"\n  -h, --help\tShow help message\n  -l, --loop\tPut in loop\n  -l 3\t\tSet loop time to 3sec\n  -v, --version\tShow BabyMonitor's version")
+		running=False
+	if "-v" in sys.argv or "--version" in sys.argv:
+		print("BabyMonitor"+str(version))
+		running=False
+	else:
+		if "-l" in sys.argv or "--loop" in sys.argv:
+			loop=True
+			for i,arg in enumerate(sys.argv):
+				if arg=="-l" or arg=="--loop":
+					if i+1<len(sys.argv):
+						if not sys.argv[i+1].startswith("-"):
+							ttwait=elaborate(sys.argv[i+1])
+							if type(ttwait)==type(""):
+								ttwait=3
+					break
+############
+if running:
+	cpuv=read("/proc/stat",["cpu "])
+	cpuv=[cpuv[1]+cpuv[3],cpuv[1]+cpuv[3]+cpuv[4]]
+	netr=read("/proc/net/dev",":")
+	netd=[0,"B"]
+	netu=[0,"B"]
+	for i in range(int(len(netr)/17)):
+		if not netr[0+i*17]=="lo:":
+			netd[0]+=netr[1+i*17]
+			netu[0]+=netr[9+i*17]
+	netr=[netd,netu,epoch()]
+	wait(.01)
+	while running:
+		if loop:clear()
+		print("# BabyMonitor "+str(version)+" #")
+		############
+		date=(os.popen("date +'%x %H:%M:%S %z'").read()).replace("\n","")
+		############
+		upt=read("/proc/uptime")[0]/3600
+		uptd=0
+		upth=int(upt)
+		if upth>24:
+			uptd=int(upth/24)
+			upth-=uptd*24
+			upt-=uptd*24
+		uptm=int((upt-upth)*60)
+		upts=int((((upt-upth)*60)-uptm)*60)
+		upt=""
+		if uptd>0:
+			upt+=str(uptd)+"d "
+		if upth>0:
+			upt+=str(upth)+"h "
+		if uptm>0:
+			upt+=str(uptm)+"m "
+		if upts>0:
+			upt+=str(upts)+"s"
+		############
+		tem=str(read("/sys/class/thermal/thermal_zone0/temp")[0]/1000)+"°c"
+		if float(tem.replace("°c",""))>=55:
+			tem+=" !"
+		############
+		cpunv=read("/proc/stat",["cpu "])
+		cpunv=[cpunv[1]+cpunv[3],cpunv[1]+cpunv[3]+cpunv[4]]
+		if cpuv[1]==cpunv[1]:
+			cpu="0%"
+		else:
+			cpu=str((cpunv[0]-cpuv[0])*100/(cpunv[1]-cpuv[1]))+"%"
+			cpuv=cpunv
+			if float(cpu.replace("%",""))>=85:
+				cpu+=" !"
+		############
+		ram=read("/proc/meminfo",["memtotal","memavailable"])
+		ram=str(((ram[1]-ram[4])*100)/ram[1])+"%"
+		if float(ram.replace("%",""))>=85:
+			ram+=" !"
+		############
+		swp=read("/proc/meminfo",["swaptotal","swapfree"])
+		swp=str(((swp[1]-swp[4])*100)/swp[1])+"%"
+		if float(swp.replace("%",""))>=85:
+			swp+=" !"
+		############
+		nets=epoch()-netr[2]
+		netrn=read("/proc/net/dev",":")
+		netdn=[0,"B"]
+		netun=[0,"B"]
+		for i in range(int(len(netrn)/17)):
+			if not netrn[0+i*17]=="lo:":
+				netdn[0]+=netrn[1+i*17]
+				netun[0]+=netrn[9+i*17]
+		netrn=[netdn,netun,epoch()]
+		netr[0]=[netrn[0][0]-netr[0][0],"B"]
+		netr[1]=[netrn[1][0]-netr[1][0],"B"]
+		for i in 0,1:
+			if netr[i][0]>=1024:
+				netr[i][0]/=1024
+				netr[i][1]="KB"
+				if netr[i][0]>=1024:
+					netr[i][0]/=1024
+					netr[i][1]="MB"
+					if netr[i][0]>=1024:
+						netr[i][0]/=1024
+						netr[i][1]="GB"
+						if netr[i][0]>=1024:
+							netr[i][0]/=1024
+							netr[i][1]="TB"
+		if nets==0:nets=1
+		net=str(netr[0][0]/nets)+netr[0][1]+"/s↓ "+str(netr[1][0]/nets)+netr[1][1]+"/s↑"
+		netr=netrn
+		############
+		hd0=read("exec df /",["/"])[4]
+		if float(hd0.replace("%",""))>85:
+			hd0+=" !"
+		############
+		print(date)       # current date and time
+		print("Upt: "+upt) # uptime
+		print("Tem: "+tem) # actual temperature
+		print("Cpu: "+cpu) # cpu usage
+		print("Ram: "+ram) # ram usage
+		print("Swp: "+swp) # swap usage
+		print("Net: "+net) # net usage
+		print("Hd0: "+hd0) # disk usage
+		if loop:wait(ttwait)
+		else:running=False
